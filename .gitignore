@@ -1,0 +1,23 @@
+# Build and distribution files
+build/
+dist/
+installer/
+*.spec
+*.exe
+inno_setup*.exe
+
+# Media and logs
+*.mp4
+*.mkv
+*.mp3
+*.log
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

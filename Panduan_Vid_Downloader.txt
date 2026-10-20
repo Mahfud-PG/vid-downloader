@@ -1,0 +1,62 @@
+======================================================
+              PANDUAN VID DOWNLOADER
+======================================================
+
+1. DESKRIPSI APLIKASI
+Vid Downloader adalah aplikasi desktop untuk Windows yang dirancang khusus untuk mencari, memutar, dan mengunduh video maupun audio. Aplikasi ini sangat cocok digunakan untuk mengunduh lagu dan video dari platform seperti YouTube dan YouTube Music. Aplikasi ini dikembangkan dengan memperhatikan aksesibilitas agar mudah digunakan, termasuk bagi pengguna screen reader (pembaca layar).
+
+2. FITUR UTAMA
+- Pencarian Langsung: Cari video hanya dengan mengetikkan judul atau cukup paste link video.
+- Format & Kualitas Fleksibel: Unduh dalam bentuk Video (MP4) atau Audio (MP3). Terdapat pilihan kualitas hingga resolusi 1080p untuk video, dan 320kbps untuk audio.
+- Pemutar Bawaan: Dilengkapi pemutar video/audio yang ringan dengan kontrol menggunakan keyboard.
+- Memori Folder: Aplikasi akan secara otomatis menyimpan dan mengingat folder unduhan terakhir yang Anda pilih.
+- Aksesibilitas: Ramah bagi pengguna tunanetra dengan nama label dan deksripsi elemen yang jelas untuk pembaca layar.
+
+3. CARA MENGGUNAKAN APLIKASI
+   A. Melakukan Pencarian
+      - Buka aplikasi Vid Downloader.
+      - Ketikkan judul lagu/video atau paste link URL di kotak isian pertama.
+      - Tekan tombol "Enter" di keyboard (atau klik tombol "Cari / Tampilkan").
+      - Hasil pencarian akan muncul dalam daftar di bawahnya (biasanya memuat 10 daftar hasil teratas).
+
+   B. Mendengarkan/Memutar Video (Preview)
+      - Gunakan panah Atas dan panah Bawah di keyboard Anda untuk menavigasi hasil pencarian.
+      - Setelah fokus berada di lagu/video yang diinginkan, tekan tombol "Enter" untuk memutarnya. 
+      - Jendela pemutar video akan muncul.
+
+   C. Menyalin Link Video
+      - Di daftar hasil pencarian, pastikan kursor Anda berada di video yang Anda tuju.
+      - Tekan tombol "Aplikasi" (Application Key) pada keyboard Anda (atau klik kanan pada mouse).
+      - Pilih "Salin Link" lalu tekan "Enter". Link otomatis tersalin ke Clipboard.
+
+   D. Mengunduh Video/Lagu
+      - Pilih video dari daftar pencarian.
+      - Tekan tombol "Tab" untuk pindah ke menu Pilihan Format. Gunakan panah atas/bawah untuk memilih Video (MP4) atau Audio (MP3).
+      - Tekan tombol "Tab" lagi untuk memilih kualitas (misal: 1080p atau 320kbps).
+      - Jika ingin mengubah folder tempat tersimpannya file, tekan "Tab" hingga ke tombol "Ubah Folder" dan tekan Spasi/Enter.
+      - Tekan "Tab" ke tombol "Download Video/Audio" lalu tekan Spasi/Enter untuk mulai mengunduh.
+      - Tunggu progress bar mencapai 100%. Pesan "Sukses" akan muncul saat unduhan selesai.
+
+4. DAFTAR SHORTCUT (TOMBOL PINTASAN)
+
+>> Di Jendela Utama (Menu Pencarian)
+- [ENTER] (di Kotak Pencarian) : Menjalankan proses pencarian.
+- [Panah Bawah] (dari Kotak Pencarian) : Langsung melompat ke Daftar Hasil Pencarian secara cepat.
+- [Panah Atas / Bawah] : Menavigasi dan memilih video di dalam daftar hasil pencarian.
+- [ENTER] (di Daftar Pencarian) : Memutar lagu/video secara langsung melalui pemutar bawaan.
+- [Tombol Aplikasi / Application Key] : Membuka menu konteks untuk menyalin link video.
+
+>> Di Jendela Pemutar Video / Audio
+- [SPASI] : Jeda (Pause) atau Lanjutkan (Play) pemutaran.
+- [Panah Atas] : Memperbesar volume suara.
+- [Panah Bawah] : Mengecilkan volume suara.
+- [Panah Kanan] : Mempercepat video maju 5 detik.
+- [Panah Kiri] : Memundurkan video ke belakang 5 detik.
+- [S] : Mengubah kecepatan pemutaran menjadi lambat (0.5x).
+- [D] : Mengubah kecepatan pemutaran kembali ke normal (1.0x).
+- [F] : Mengubah kecepatan pemutaran menjadi cepat (2.0x).
+- [ESCAPE] : Menghentikan pemutaran dan menutup jendela pemutar video.
+
+======================================================
+Terima kasih telah menggunakan Vid Downloader!
+======================================================
