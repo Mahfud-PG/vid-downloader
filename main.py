@@ -580,28 +580,6 @@ class VidDownloaderApp(QWidget):
         self.results_list.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.results_list)
 
-        fmt_layout = QHBoxLayout()
-        self.fmt_label = QLabel("Pilihan Format:")
-        fmt_layout.addWidget(self.fmt_label)
-
-        self.format_combo = QComboBox()
-        self.format_combo.setAccessibleName("Pilihan Format Unduhan")
-        self.format_combo.addItems(["Video (MP4)", "Audio (MP3)", "Audio (WAV)"])
-        self.format_combo.setCurrentText(self.current_format)
-        self.format_combo.currentTextChanged.connect(self.on_format_combo_changed)
-        fmt_layout.addWidget(self.format_combo)
-
-        self.quality_label = QLabel("Kualitas:")
-        fmt_layout.addWidget(self.quality_label)
-
-        self.quality_combo = QComboBox()
-        self.quality_combo.setAccessibleName("Pilihan Kualitas")
-        self.update_quality_combo_items()
-        self.quality_combo.currentTextChanged.connect(self.on_quality_combo_changed)
-        fmt_layout.addWidget(self.quality_combo)
-
-        main_layout.addLayout(fmt_layout)
-
         self.download_button = QPushButton(self.tr("download_btn", self.current_format, self.current_quality))
         font = self.download_button.font()
         font.setPointSize(12)
@@ -626,9 +604,7 @@ class VidDownloaderApp(QWidget):
 
         QWidget.setTabOrder(self.url_entry, self.search_button)
         QWidget.setTabOrder(self.search_button, self.results_list)
-        QWidget.setTabOrder(self.results_list, self.format_combo)
-        QWidget.setTabOrder(self.format_combo, self.quality_combo)
-        QWidget.setTabOrder(self.quality_combo, self.download_button)
+        QWidget.setTabOrder(self.results_list, self.download_button)
 
     def eventFilter(self, source, event):
         # Quick jump to results list or format menu using Down arrow
@@ -897,35 +873,6 @@ class VidDownloaderApp(QWidget):
         if self.status_label.text() == "Mencari..." or self.status_label.text() == "Searching...":
             self.status_label.setText(self.tr("search_searching"))
 
-    def update_quality_combo_items(self):
-        if not hasattr(self, 'quality_combo'):
-            return
-        self.quality_combo.blockSignals(True)
-        self.quality_combo.clear()
-        if self.current_format == "Video (MP4)":
-            self.quality_combo.addItems(self.video_qualities)
-        elif self.current_format == "Audio (WAV)":
-            self.quality_combo.addItems(self.wav_qualities)
-        else: # Audio (MP3)
-            self.quality_combo.addItems(self.audio_qualities)
-        
-        items = [self.quality_combo.itemText(i) for i in range(self.quality_combo.count())]
-        if self.current_quality in items:
-            self.quality_combo.setCurrentText(self.current_quality)
-        else:
-            self.current_quality = self.quality_combo.itemText(0)
-            self.quality_combo.setCurrentIndex(0)
-            self.settings.setValue("quality", self.current_quality)
-        self.quality_combo.blockSignals(False)
-
-    def on_format_combo_changed(self, text):
-        if text and text != self.current_format:
-            self.change_format(text)
-
-    def on_quality_combo_changed(self, text):
-        if text and text != self.current_quality:
-            self.change_quality(text)
-
     def change_format(self, fmt):
         self.current_format = fmt
         self.settings.setValue("format", fmt)
@@ -939,20 +886,11 @@ class VidDownloaderApp(QWidget):
             if self.current_quality not in self.audio_qualities:
                 self.current_quality = "320kbps"
         self.settings.setValue("quality", self.current_quality)
-        if hasattr(self, 'format_combo') and self.format_combo.currentText() != fmt:
-            self.format_combo.blockSignals(True)
-            self.format_combo.setCurrentText(fmt)
-            self.format_combo.blockSignals(False)
-        self.update_quality_combo_items()
         self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
         
     def change_quality(self, qlt):
         self.current_quality = qlt
         self.settings.setValue("quality", qlt)
-        if hasattr(self, 'quality_combo') and self.quality_combo.currentText() != qlt:
-            self.quality_combo.blockSignals(True)
-            self.quality_combo.setCurrentText(qlt)
-            self.quality_combo.blockSignals(False)
         self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
 
     def check_for_updates(self, silent=True):
