@@ -354,7 +354,13 @@ class VidDownloaderApp(QWidget):
     LANG = {
         "id": {
             "title": "Vid Downloader",
-            "search_hint": "Masukkan Judul Video atau Link, lalu tekan Enter:",
+            "search_hint": "Masukkan Judul Video/Lagu atau Link, lalu tekan Enter:",
+            "search_hint_single": "Masukkan Judul Video/Lagu atau Link, lalu tekan Enter [Mode: Single]:",
+            "search_hint_album": "Masukkan Judul Album Artis, lalu tekan Enter [Mode: ALBUM]:",
+            "menu_search_mode": "Mode Pencarian",
+            "mode_single": "Lagu / Video Tunggal (Single)",
+            "mode_album": "Album Lengkap (Full Album)",
+            "mode_switched": "Mode pencarian dialihkan ke: {}",
             "search_btn": "Cari / Tampilkan",
             "search_searching": "Mencari...",
             "status_found": "Ditemukan {} hasil.",
@@ -382,7 +388,13 @@ class VidDownloaderApp(QWidget):
         },
         "en": {
             "title": "Vid Downloader",
-            "search_hint": "Paste Video Link or Title, then press Enter:",
+            "search_hint": "Enter Video/Song Title or Link, then press Enter:",
+            "search_hint_single": "Enter Video/Song Title or Link, then press Enter [Mode: Single]:",
+            "search_hint_album": "Enter Album Title or Artist, then press Enter [Mode: ALBUM]:",
+            "menu_search_mode": "Search Mode",
+            "mode_single": "Single Song / Video",
+            "mode_album": "Full Album",
+            "mode_switched": "Search mode switched to: {}",
             "search_btn": "Search / View",
             "search_searching": "Searching...",
             "status_found": "Found {} results.",
@@ -437,6 +449,7 @@ class VidDownloaderApp(QWidget):
         elif self.current_format == "Audio (WAV)" and self.current_quality not in self.wav_qualities:
             self.current_quality = "Lossless 16-bit (CD Quality)"
 
+        self.search_mode = self.settings.value("search_mode", "single")
         self.download_queue = queue.Queue()
         self.is_downloading = False
         self.current_download_info = {}
@@ -558,7 +571,8 @@ class VidDownloaderApp(QWidget):
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
 
-        self.url_label = QLabel(self.tr("search_hint"))
+        hint_key = "search_hint_album" if self.search_mode == "album" else "search_hint_single"
+        self.url_label = QLabel(self.tr(hint_key))
         main_layout.addWidget(self.url_label)
         
         url_layout = QHBoxLayout()
@@ -619,6 +633,12 @@ class VidDownloaderApp(QWidget):
 
     def keyPressEvent(self, event):
         from PyQt6.QtCore import Qt
+        # Pintasan Ctrl+M untuk toggle mode pencarian (Single <-> Album)
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_M:
+            new_mode = "album" if self.search_mode == "single" else "single"
+            self.set_search_mode(new_mode)
+            return
+
         if event.key() == Qt.Key.Key_Escape:
             if getattr(self, "saved_album_entries", None) is not None:
                 self.results_list.clear()
@@ -647,14 +667,25 @@ class VidDownloaderApp(QWidget):
             'extractor_args': {'youtube': ['player_client=android,web']}
         }
         try:
-            if query.lower().startswith("album:"):
+            is_url = query.startswith("http://") or query.startswith("https://")
+            is_album_mode = False
+            clean_query = query
+
+            if not is_url:
+                if query.lower().startswith("album:"):
+                    is_album_mode = True
+                    clean_query = query[6:].strip()
+                elif getattr(self, "search_mode", "single") == "album":
+                    is_album_mode = True
+                    clean_query = query.strip()
+
+            if is_album_mode:
                 try:
                     from ytmusicapi import YTMusic
                 except ImportError:
                     self.signals.finished.emit("Error: ytmusicapi belum diinstall.", False)
                     return
                 yt = YTMusic()
-                clean_query = query[6:].strip()
                 results = yt.search(clean_query, filter='albums')
                 entries = []
                 for res in results:
@@ -674,7 +705,7 @@ class VidDownloaderApp(QWidget):
                     })
             else:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    if query.startswith("http://") or query.startswith("https://"):
+                    if is_url:
                         info = ydl.extract_info(query, download=False)
                         if 'entries' in info:
                             entries = info['entries']
@@ -763,6 +794,18 @@ class VidDownloaderApp(QWidget):
             menu.addAction(copy_action)
             menu.addSeparator()
 
+        # Mode Pencarian (Lagu Tunggal vs Album Penuh)
+        mode_menu = menu.addMenu(self.tr("menu_search_mode"))
+        for m_key, m_label in [("single", self.tr("mode_single")), ("album", self.tr("mode_album"))]:
+            action = QAction(m_label, self)
+            action.setCheckable(True)
+            if self.search_mode == m_key:
+                action.setChecked(True)
+            action.triggered.connect(lambda checked, mode=m_key: self.set_search_mode(mode))
+            mode_menu.addAction(action)
+
+        menu.addSeparator()
+
         settings_menu = menu.addMenu(self.tr("menu_settings"))
         
         folder_action = QAction(self.tr("menu_folder"), self)
@@ -846,7 +889,7 @@ class VidDownloaderApp(QWidget):
 
     def show_help_dialog(self):
         title = "Bantuan & Pintasan" if self.current_lang == "id" else "Help & Shortcuts"
-        text = "FITUR UTAMA:\n- Pencarian Video: Ketik kata kunci biasa.\n- Pencarian Album: Ketik awalan 'album: ' (contoh: album: slank) untuk mengunduh 1 album utuh.\n- Tempel Link: Tempel (Paste) link YouTube, Playlist, atau TikTok untuk langsung diproses.\n- Unduh Massal: Tahan tombol Shift atau Ctrl di daftar lagu untuk memilih lebih dari satu.\n\nPINTASAN KEYBOARD (SHORTCUTS):\n- Panah Bawah (dari kotak teks): Pindah ke daftar hasil.\n- Enter (di daftar hasil): Putar lagu/video untuk percobaan.\n- Spasi: Putar/Jeda (Play/Pause) saat memutar lagu.\n- Panah Atas/Bawah (saat memutar): Naik/turunkan volume.\n- Panah Kanan/Kiri (saat memutar): Maju/mundur 5 detik.\n- Esc (di dalam album): Kembali ke daftar album sebelumnya." if self.current_lang == "id" else "MAIN FEATURES:\n- Video Search: Type normal keywords.\n- Album Search: Type 'album: ' prefix (e.g., album: slank) to download full albums.\n- Paste Link: Paste YouTube, Playlist, or TikTok links to process directly.\n- Bulk Download: Hold Shift or Ctrl in the list to select multiple items.\n\nKEYBOARD SHORTCUTS:\n- Down Arrow (from text box): Jump to results list.\n- Enter (on results list): Play media for preview.\n- Spacebar: Play/Pause during playback.\n- Up/Down Arrow (during playback): Increase/decrease volume.\n- Right/Left Arrow (during playback): Fast forward/rewind 5 seconds.\n- Esc (inside album): Go back to previous album list."
+        text = "FITUR UTAMA:\n- Mode Pencarian: Tersedia pilihan mode 'Lagu / Video Tunggal' atau 'Album Lengkap' di Menu Konteks (Klik Kanan) atau cukup tekan Ctrl+M untuk berpindah mode tanpa perlu mengetik awalan 'album: '.\n- Pencarian Langsung: Ketik kata kunci biasa (nama lagu atau artis).\n- Tempel Link: Tempel (Paste) link YouTube, Playlist, atau TikTok untuk langsung diproses.\n- Unduh Massal: Tahan tombol Shift atau Ctrl di daftar lagu untuk memilih lebih dari satu.\n\nPINTASAN KEYBOARD (SHORTCUTS):\n- Ctrl+M : Beralih Mode Pencarian (Single <-> Album Lengkap).\n- Panah Bawah (dari kotak teks): Pindah ke daftar hasil.\n- Enter (di daftar hasil): Putar lagu/video untuk percobaan.\n- Spasi: Putar/Jeda (Play/Pause) saat memutar lagu.\n- Panah Atas/Bawah (saat memutar): Naik/turunkan volume.\n- Panah Kanan/Kiri (saat memutar): Maju/mundur 5 detik.\n- Esc (di dalam album): Kembali ke daftar album sebelumnya." if self.current_lang == "id" else "MAIN FEATURES:\n- Search Mode: Choose between 'Single Song / Video' or 'Full Album' via Context Menu or press Ctrl+M to toggle modes without typing 'album: ' prefix.\n- Direct Search: Type regular search keywords.\n- Paste Link: Paste YouTube, Playlist, or TikTok links to process directly.\n- Bulk Download: Hold Shift or Ctrl in the list to select multiple items.\n\nKEYBOARD SHORTCUTS:\n- Ctrl+M : Toggle Search Mode (Single <-> Album).\n- Down Arrow (from text box): Jump to results list.\n- Enter (on results list): Play media for preview.\n- Spacebar: Play/Pause during playback.\n- Up/Down Arrow (during playback): Increase/decrease volume.\n- Right/Left Arrow (during playback): Fast forward/rewind 5 seconds.\n- Esc (inside album): Go back to previous album list."
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, title, text)
 
@@ -862,11 +905,20 @@ class VidDownloaderApp(QWidget):
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, title, text)
 
+    def set_search_mode(self, mode):
+        self.search_mode = mode
+        self.settings.setValue("search_mode", mode)
+        hint_key = "search_hint_album" if mode == "album" else "search_hint_single"
+        self.url_label.setText(self.tr(hint_key))
+        mode_name = self.tr("mode_album") if mode == "album" else self.tr("mode_single")
+        self.status_label.setText(self.tr("mode_switched", mode_name))
+
     def change_lang(self, code):
         self.current_lang = code
         self.settings.setValue("lang", code)
         self.setWindowTitle(self.tr("title"))
-        self.url_label.setText(self.tr("search_hint"))
+        hint_key = "search_hint_album" if self.search_mode == "album" else "search_hint_single"
+        self.url_label.setText(self.tr(hint_key))
         self.search_button.setText(self.tr("search_btn"))
         self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
         if self.status_label.text() == "Mencari..." or self.status_label.text() == "Searching...":
