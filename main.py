@@ -1,23 +1,108 @@
 import os
 import sys
 import threading
+import queue
+import urllib.request
+import json
+import tempfile
+import subprocess
+import re
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QComboBox, 
                              QProgressBar, QFileDialog, QMessageBox, QGroupBox,
                              QDialog, QListWidget, QListWidgetItem, QMenu)
-from PyQt6.QtCore import pyqtSignal, QObject, Qt, QEvent, QUrl, QSettings
+from PyQt6.QtCore import pyqtSignal, QObject, Qt, QEvent, QUrl, QSettings, QTimer, QThread
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 import yt_dlp
 import imageio_ffmpeg
 
+APP_VERSION = "1.1.0"
+GITHUB_REPO = "Mahfud-PG/vid-downloader"
+
 def get_ffmpeg_path():
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+class UpdateCheckerThread(QThread):
+    update_found = pyqtSignal(str, str, str)  # version, notes, download_url
+    no_update = pyqtSignal(str)              # current_version
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, current_version, repo_name, silent=True):
+        super().__init__()
+        self.current_version = current_version
+        self.repo_name = repo_name
+        self.silent = silent
+
+    def run(self):
+        try:
+            url = f"https://api.github.com/repos/{self.repo_name}/releases/latest"
+            req = urllib.request.Request(url, headers={"User-Agent": "VidDownloader-App"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                tag = data.get("tag_name", "").lstrip("v")
+                body = data.get("body", "Pembaruan versi baru tersedia.")
+                assets = data.get("assets", [])
+                dl_url = None
+                for a in assets:
+                    name = a.get("name", "").lower()
+                    if name.endswith(".exe"):
+                        dl_url = a.get("browser_download_url")
+                        break
+
+                def parse_ver(v_str):
+                    parts = []
+                    for part in v_str.split("."):
+                        digits = "".join(c for c in part if c.isdigit())
+                        if digits:
+                            parts.append(int(digits))
+                    return parts
+
+                remote_v = parse_ver(tag)
+                local_v = parse_ver(self.current_version)
+
+                if dl_url and remote_v > local_v:
+                    self.update_found.emit(tag, body, dl_url)
+                else:
+                    self.no_update.emit(self.current_version)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+class UpdateDownloadThread(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, download_url):
+        super().__init__()
+        self.download_url = download_url
+
+    def run(self):
+        try:
+            dest_file = os.path.join(tempfile.gettempdir(), "VidDownloader_Update.exe")
+            req = urllib.request.Request(self.download_url, headers={"User-Agent": "VidDownloader-App"})
+            with urllib.request.urlopen(req, timeout=30) as resp, open(dest_file, "wb") as out:
+                total = int(resp.info().get("Content-Length", 0))
+                downloaded = 0
+                chunk_sz = 131072
+                while True:
+                    chunk = resp.read(chunk_sz)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        pct = int((downloaded / total) * 100)
+                        self.progress.emit(pct)
+            self.finished.emit(dest_file)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
 
 class WorkerSignals(QObject):
     progress = pyqtSignal(float, str)
     finished = pyqtSignal(str, bool)
+    all_finished = pyqtSignal(str, bool)
     search_finished = pyqtSignal(list)
     play_ready = pyqtSignal(str)
 
@@ -281,12 +366,19 @@ class VidDownloaderApp(QWidget):
             "menu_lang": "Bahasa",
             "menu_format": "Format Download",
             "menu_quality": "Kualitas Video",
-            "audio_quality": "Kualitas Audio",
+            "audio_quality": "Kualitas Audio MP3",
+            "wav_quality": "Kualitas Audio WAV",
             "success": "Sukses",
             "success_msg": "Unduhan selesai dan berhasil disimpan!",
             "error": "Error",
             "downloading": "Mengunduh... {:.1f}% ({:.1f} MB/s)",
-            "download_done": "Unduhan selesai! Sedang memproses..."
+            "download_done": "Unduhan selesai! Sedang memproses...",
+            "queued_msg": "Ditambahkan ke antrean unduhan (Total: {} tugas)",
+            "all_done": "Semua unduhan di antrean telah selesai dan berhasil disimpan!",
+            "update_available_title": "Pembaruan Tersedia",
+            "update_available_msg": "Pembaruan Vid Downloader v{} telah tersedia!\nVersi Anda saat ini: v{}\n\nCatatan Rilis:\n{}\n\nApakah Anda ingin mengunduh dan memperbarui sekarang?",
+            "no_update_title": "Versi Terbaru",
+            "no_update_msg": "Anda sudah menggunakan versi terbaru Vid Downloader (v{})."
         },
         "en": {
             "title": "Vid Downloader",
@@ -302,12 +394,19 @@ class VidDownloaderApp(QWidget):
             "menu_lang": "Language",
             "menu_format": "Download Format",
             "menu_quality": "Video Quality",
-            "audio_quality": "Audio Quality",
+            "audio_quality": "MP3 Audio Quality",
+            "wav_quality": "WAV Audio Quality",
             "success": "Success",
             "success_msg": "Download finished and saved successfully!",
             "error": "Error",
             "downloading": "Downloading... {:.1f}% ({:.1f} MB/s)",
-            "download_done": "Download finished! Processing..."
+            "download_done": "Download finished! Processing...",
+            "queued_msg": "Added to download queue (Total: {} tasks)",
+            "all_done": "All downloads in queue finished and saved successfully!",
+            "update_available_title": "Update Available",
+            "update_available_msg": "Vid Downloader v{} is available!\nYour current version: v{}\n\nRelease Notes:\n{}\n\nDo you want to download and update now?",
+            "no_update_title": "Latest Version",
+            "no_update_msg": "You are already using the latest version of Vid Downloader (v{})."
         }
     }
 
@@ -328,12 +427,19 @@ class VidDownloaderApp(QWidget):
         
         self.video_qualities = ["1080p", "720p", "480p", "Terbaik"]
         self.audio_qualities = ["320kbps", "128kbps"]
+        self.wav_qualities = ["Lossless 16-bit (CD Quality)", "Studio 24-bit (Hi-Res)"]
         
-        # fallback fix if they somehow saved an audio quality while video was selected
+        # fallback fix if they somehow saved a quality not matching format
         if self.current_format == "Video (MP4)" and self.current_quality not in self.video_qualities:
             self.current_quality = "1080p"
         elif self.current_format == "Audio (MP3)" and self.current_quality not in self.audio_qualities:
             self.current_quality = "320kbps"
+        elif self.current_format == "Audio (WAV)" and self.current_quality not in self.wav_qualities:
+            self.current_quality = "Lossless 16-bit (CD Quality)"
+
+        self.download_queue = queue.Queue()
+        self.is_downloading = False
+        self.current_download_info = {}
             
         self.setWindowTitle(self.tr("title"))
         self.resize(650, 550)
@@ -341,6 +447,7 @@ class VidDownloaderApp(QWidget):
         self.signals = WorkerSignals()
         self.signals.progress.connect(self.update_progress)
         self.signals.finished.connect(self.download_finished)
+        self.signals.all_finished.connect(self.on_all_downloads_finished)
         self.signals.search_finished.connect(self.on_search_finished)
         
         default_download_path = os.path.join(os.path.expanduser("~"), "Downloads", "vid downloader")
@@ -358,6 +465,9 @@ class VidDownloaderApp(QWidget):
 
         self.setup_ui()
         self.auto_paste_clipboard()
+
+        # Cek pembaruan di latar belakang secara hening setelah antarmuka muncul
+        QTimer.singleShot(2500, lambda: self.check_for_updates(silent=True))
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
@@ -470,12 +580,35 @@ class VidDownloaderApp(QWidget):
         self.results_list.customContextMenuRequested.connect(self.show_context_menu)
         main_layout.addWidget(self.results_list)
 
+        fmt_layout = QHBoxLayout()
+        self.fmt_label = QLabel("Pilihan Format:")
+        fmt_layout.addWidget(self.fmt_label)
+
+        self.format_combo = QComboBox()
+        self.format_combo.setAccessibleName("Pilihan Format Unduhan")
+        self.format_combo.addItems(["Video (MP4)", "Audio (MP3)", "Audio (WAV)"])
+        self.format_combo.setCurrentText(self.current_format)
+        self.format_combo.currentTextChanged.connect(self.on_format_combo_changed)
+        fmt_layout.addWidget(self.format_combo)
+
+        self.quality_label = QLabel("Kualitas:")
+        fmt_layout.addWidget(self.quality_label)
+
+        self.quality_combo = QComboBox()
+        self.quality_combo.setAccessibleName("Pilihan Kualitas")
+        self.update_quality_combo_items()
+        self.quality_combo.currentTextChanged.connect(self.on_quality_combo_changed)
+        fmt_layout.addWidget(self.quality_combo)
+
+        main_layout.addLayout(fmt_layout)
+
         self.download_button = QPushButton(self.tr("download_btn", self.current_format, self.current_quality))
         font = self.download_button.font()
         font.setPointSize(12)
         font.setBold(True)
         self.download_button.setFont(font)
         self.download_button.setMinimumHeight(40)
+        self.download_button.setAccessibleName("Tombol Unduh")
         self.download_button.clicked.connect(self.start_download)
         main_layout.addWidget(self.download_button)
 
@@ -493,7 +626,9 @@ class VidDownloaderApp(QWidget):
 
         QWidget.setTabOrder(self.url_entry, self.search_button)
         QWidget.setTabOrder(self.search_button, self.results_list)
-        QWidget.setTabOrder(self.results_list, self.download_button)
+        QWidget.setTabOrder(self.results_list, self.format_combo)
+        QWidget.setTabOrder(self.format_combo, self.quality_combo)
+        QWidget.setTabOrder(self.quality_combo, self.download_button)
 
     def eventFilter(self, source, event):
         # Quick jump to results list or format menu using Down arrow
@@ -681,7 +816,7 @@ class VidDownloaderApp(QWidget):
         menu.addSeparator()
         
         format_menu = menu.addMenu(self.tr("menu_format"))
-        for f_name in ["Video (MP4)", "Audio (MP3)"]:
+        for f_name in ["Video (MP4)", "Audio (MP3)", "Audio (WAV)"]:
             action = QAction(f_name, self)
             action.setCheckable(True)
             if self.current_format == f_name:
@@ -689,8 +824,16 @@ class VidDownloaderApp(QWidget):
             action.triggered.connect(lambda checked, name=f_name: self.change_format(name))
             format_menu.addAction(action)
             
-        qualities = self.video_qualities if self.current_format == "Video (MP4)" else self.audio_qualities
-        q_label = self.tr("menu_quality") if self.current_format == "Video (MP4)" else self.tr("audio_quality")
+        if self.current_format == "Video (MP4)":
+            qualities = self.video_qualities
+            q_label = self.tr("menu_quality")
+        elif self.current_format == "Audio (WAV)":
+            qualities = self.wav_qualities
+            q_label = self.tr("wav_quality")
+        else:
+            qualities = self.audio_qualities
+            q_label = self.tr("audio_quality")
+
         quality_menu = menu.addMenu(q_label)
         for q_name in qualities:
             action = QAction(q_name, self)
@@ -703,6 +846,11 @@ class VidDownloaderApp(QWidget):
         menu.addSeparator()
         info_menu_title = "Info & Bantuan" if self.current_lang == "id" else "Info & Help"
         info_menu = menu.addMenu(info_menu_title)
+
+        update_text = "Periksa Pembaruan..." if self.current_lang == "id" else "Check for Updates..."
+        update_action = QAction(update_text, self)
+        update_action.triggered.connect(lambda: self.check_for_updates(silent=False))
+        info_menu.addAction(update_action)
 
         help_text = "Bantuan & Pintasan" if self.current_lang == "id" else "Help & Shortcuts"
         help_action = QAction(help_text, self)
@@ -749,20 +897,149 @@ class VidDownloaderApp(QWidget):
         if self.status_label.text() == "Mencari..." or self.status_label.text() == "Searching...":
             self.status_label.setText(self.tr("search_searching"))
 
+    def update_quality_combo_items(self):
+        if not hasattr(self, 'quality_combo'):
+            return
+        self.quality_combo.blockSignals(True)
+        self.quality_combo.clear()
+        if self.current_format == "Video (MP4)":
+            self.quality_combo.addItems(self.video_qualities)
+        elif self.current_format == "Audio (WAV)":
+            self.quality_combo.addItems(self.wav_qualities)
+        else: # Audio (MP3)
+            self.quality_combo.addItems(self.audio_qualities)
+        
+        items = [self.quality_combo.itemText(i) for i in range(self.quality_combo.count())]
+        if self.current_quality in items:
+            self.quality_combo.setCurrentText(self.current_quality)
+        else:
+            self.current_quality = self.quality_combo.itemText(0)
+            self.quality_combo.setCurrentIndex(0)
+            self.settings.setValue("quality", self.current_quality)
+        self.quality_combo.blockSignals(False)
+
+    def on_format_combo_changed(self, text):
+        if text and text != self.current_format:
+            self.change_format(text)
+
+    def on_quality_combo_changed(self, text):
+        if text and text != self.current_quality:
+            self.change_quality(text)
+
     def change_format(self, fmt):
         self.current_format = fmt
         self.settings.setValue("format", fmt)
         if fmt == "Video (MP4)":
-            self.current_quality = "1080p"
+            if self.current_quality not in self.video_qualities:
+                self.current_quality = "1080p"
+        elif fmt == "Audio (WAV)":
+            if self.current_quality not in self.wav_qualities:
+                self.current_quality = "Lossless 16-bit (CD Quality)"
         else:
-            self.current_quality = "320kbps"
+            if self.current_quality not in self.audio_qualities:
+                self.current_quality = "320kbps"
         self.settings.setValue("quality", self.current_quality)
+        if hasattr(self, 'format_combo') and self.format_combo.currentText() != fmt:
+            self.format_combo.blockSignals(True)
+            self.format_combo.setCurrentText(fmt)
+            self.format_combo.blockSignals(False)
+        self.update_quality_combo_items()
         self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
         
     def change_quality(self, qlt):
         self.current_quality = qlt
         self.settings.setValue("quality", qlt)
+        if hasattr(self, 'quality_combo') and self.quality_combo.currentText() != qlt:
+            self.quality_combo.blockSignals(True)
+            self.quality_combo.setCurrentText(qlt)
+            self.quality_combo.blockSignals(False)
         self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
+
+    def check_for_updates(self, silent=True):
+        if hasattr(self, 'update_checker') and self.update_checker.isRunning():
+            return
+        if not silent:
+            self.status_label.setText("Memeriksa pembaruan..." if self.current_lang == "id" else "Checking for updates...")
+        self.update_checker = UpdateCheckerThread(APP_VERSION, GITHUB_REPO, silent=silent)
+        self.update_checker.update_found.connect(self.on_update_found)
+        self.update_checker.no_update.connect(lambda cur_v: self.on_no_update(cur_v, silent))
+        self.update_checker.error_occurred.connect(lambda err: self.on_update_error(err, silent))
+        self.update_checker.start()
+
+    def on_update_found(self, tag, notes, dl_url):
+        title = self.tr("update_available_title")
+        msg = self.tr("update_available_msg", tag, APP_VERSION, notes)
+        reply = QMessageBox.question(
+            self,
+            title,
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.start_downloading_update(dl_url, tag)
+
+    def on_no_update(self, cur_v, silent):
+        if not silent:
+            self.status_label.setText("")
+            QMessageBox.information(self, self.tr("no_update_title"), self.tr("no_update_msg", cur_v))
+
+    def on_update_error(self, err, silent):
+        if not silent:
+            self.status_label.setText("")
+            QMessageBox.warning(self, "Pembaruan", f"Gagal memeriksa pembaruan:\n{err}")
+
+    def start_downloading_update(self, dl_url, tag):
+        self.progress_bar.setValue(0)
+        self.progress_bar.show()
+        self.status_label.setText(f"Mengunduh pembaruan v{tag}...")
+        self.update_dl_thread = UpdateDownloadThread(dl_url)
+        self.update_dl_thread.progress.connect(self.on_update_dl_progress)
+        self.update_dl_thread.finished.connect(self.on_update_dl_finished)
+        self.update_dl_thread.error_occurred.connect(self.on_update_dl_error)
+        self.update_dl_thread.start()
+
+    def on_update_dl_progress(self, pct):
+        self.progress_bar.setValue(pct)
+        self.status_label.setText(f"Mengunduh pembaruan: {pct}%")
+
+    def on_update_dl_finished(self, new_exe_path):
+        self.progress_bar.hide()
+        self.status_label.setText("Pembaruan siap dipasang!")
+        
+        current_exe = sys.executable if getattr(sys, "frozen", False) else os.path.abspath(sys.argv[0])
+        
+        if getattr(sys, "frozen", False):
+            bat_path = os.path.join(tempfile.gettempdir(), "vid_apply_update.bat")
+            bat_content = f'''@echo off
+timeout /t 2 /nobreak >nul
+copy /y "{new_exe_path}" "{current_exe}" >nul
+start "" "{current_exe}"
+del "%~f0"
+'''
+            try:
+                with open(bat_path, "w", encoding="utf-8") as f:
+                    f.write(bat_content)
+                QMessageBox.information(
+                    self,
+                    "Memasang Pembaruan",
+                    "Pembaruan berhasil diunduh!\nAplikasi akan memulai ulang secara otomatis untuk menerapkan versi baru."
+                )
+                subprocess.Popen(["cmd.exe", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW)
+                QApplication.quit()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Gagal menerapkan pembaruan: {e}")
+        else:
+            QMessageBox.information(
+                self,
+                "Pembaruan Berhasil Diunduh",
+                f"File versi baru telah tersimpan di:\n{new_exe_path}"
+            )
+
+    def on_update_dl_error(self, err):
+        self.progress_bar.hide()
+        self.status_label.setText("")
+        QMessageBox.warning(self, "Error Unduh", f"Gagal mengunduh pembaruan:\n{err}")
 
     def copy_link(self):
         selected_items = self.results_list.selectedItems()
@@ -840,31 +1117,35 @@ class VidDownloaderApp(QWidget):
         self.status_label.setText(message)
 
     def download_finished(self, message, success):
+        # Dipanggil jika ada notifikasi tugas individual
+        pass
+
+    def on_all_downloads_finished(self, message, success):
         self.progress_bar.hide()
-        self.status_label.setText(self.tr("status_ready"))
+        self.status_label.setText(self.tr("all_done"))
         self.download_button.setEnabled(True)
-        title = self.tr("success") if success else self.tr("error")
-        if success and "Sukses" in message:
-            message = self.tr("success_msg")
-            QMessageBox.information(self, title, message)
-            # Fokus kembali ke input setelah sukses, siap untuk pencarian berikutnya
-            self.url_entry.setFocus()
-            self.url_entry.selectAll()
-        else:
-            QMessageBox.warning(self, title, message)
+        QMessageBox.information(self, self.tr("success"), self.tr("all_done"))
+        self.url_entry.setFocus()
+        self.url_entry.selectAll()
 
     def progress_hook(self, d):
         if d['status'] == 'downloading':
             try:
-                # Menghindari error pembagian dengan 0 atau tipe data
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                 speed = d.get('speed', 0)
                 
+                info = getattr(self, 'current_download_info', {})
+                q_rem = info.get('queue_remaining', 0)
+                q_str = f"[Antrean: +{q_rem}] " if q_rem > 0 else ""
+                idx = info.get('idx', 1)
+                tot = info.get('total', 1)
+                item_str = f"[{idx}/{tot}] " if tot > 1 else ""
+                
                 if total > 0:
                     percentage = (downloaded / total) * 100
                     speed_mbps = speed / 1024 / 1024 if speed else 0
-                    msg = self.tr("downloading", percentage, speed_mbps)
+                    msg = f"{q_str}{item_str}Mengunduh: {percentage:.1f}% ({speed_mbps:.1f} MB/s)"
                     self.signals.progress.emit(percentage, msg)
             except Exception:
                 pass
@@ -886,25 +1167,56 @@ class VidDownloaderApp(QWidget):
             if not url:
                 self.url_entry.setFocus()
                 return
-            items_data.append({'url': url, 'playlist_title': None, 'playlist_index': None})
+            items_data.append({'url': url, 'playlist_title': None, 'playlist_index': None, 'title': url})
         else:
             for item in selected_items:
                 data = item.data(Qt.ItemDataRole.UserRole)
                 if isinstance(data, dict):
                     items_data.append(data)
                 else:
-                    items_data.append({'url': data, 'playlist_title': None, 'playlist_index': None})
-
-        self.status_label.setText("...")
-        self.download_button.setEnabled(False)
-        self.progress_bar.setValue(0)
-        self.progress_bar.show()
+                    items_data.append({'url': data, 'playlist_title': None, 'playlist_index': None, 'title': item.text()})
 
         format_choice = self.current_format
+        quality_choice = self.current_quality
 
-        threading.Thread(target=self.download_process, args=(items_data, format_choice, self.current_quality), daemon=True).start()
+        task = {
+            'items': items_data,
+            'format': format_choice,
+            'quality': quality_choice
+        }
 
-    def download_process(self, items_data, format_choice, quality_choice):
+        self.download_queue.put(task)
+        
+        # TOMBOL DOWNLOAD TETAP TERSEDIA DAN AKTIF SELURUH WAKTU
+        self.download_button.setEnabled(True)
+
+        if self.is_downloading:
+            q_size = self.download_queue.qsize()
+            self.status_label.setText(self.tr("queued_msg", q_size))
+            return
+
+        self.is_downloading = True
+        self.progress_bar.setValue(0)
+        self.progress_bar.show()
+        threading.Thread(target=self.queue_worker, daemon=True).start()
+
+    def queue_worker(self):
+        while not self.download_queue.empty():
+            try:
+                task = self.download_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            items_data = task['items']
+            format_choice = task['format']
+            quality_choice = task['quality']
+
+            self.download_process_task(items_data, format_choice, quality_choice)
+
+        self.is_downloading = False
+        self.signals.all_finished.emit(self.tr("all_done"), True)
+
+    def download_process_task(self, items_data, format_choice, quality_choice):
         ffmpeg_loc = get_ffmpeg_path()
         base_ydl_opts = {
             'progress_hooks': [self.progress_hook],
@@ -914,7 +1226,23 @@ class VidDownloaderApp(QWidget):
             'extractor_args': {'youtube': ['player_client=android,web']},
         }
 
-        if format_choice == "Audio (MP3)":
+        if format_choice == "Audio (WAV)":
+            is_24bit = "24-bit" in quality_choice
+            pcm_codec = "pcm_s24le" if is_24bit else "pcm_s16le"
+            sample_rate = "48000" if is_24bit else "44100"
+            base_ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'wav',
+                    }
+                ],
+                'postprocessor_args': {
+                    'ffmpeg': ['-acodec', pcm_codec, '-ar', sample_rate]
+                }
+            })
+        elif format_choice == "Audio (MP3)":
             bitrate = "320" if "320" in quality_choice else "128"
             base_ydl_opts.update({
                 'format': 'bestaudio/best',
@@ -943,17 +1271,25 @@ class VidDownloaderApp(QWidget):
             
             base_ydl_opts['merge_output_format'] = 'mp4'
 
+        total_items = len(items_data)
         try:
             for idx, data in enumerate(items_data):
                 url = data['url']
                 pl_title = data.get('playlist_title')
                 pl_idx = data.get('playlist_index')
                 is_album = data.get('__is_ytmusic_album')
+                title = data.get('title', 'Media')
+
+                self.current_download_info = {
+                    'title': title,
+                    'idx': idx + 1,
+                    'total': total_items,
+                    'queue_remaining': self.download_queue.qsize()
+                }
                 
-                is_multi = len(items_data) > 1
+                is_multi = total_items > 1
                 
                 if is_album:
-                    # Jika download langsung album utuh, biarkan yt-dlp yang atur folder & nomor
                     current_dl_path = self.download_path
                     album_folder_name = data.get('title')
                     if album_folder_name:
@@ -985,9 +1321,8 @@ class VidDownloaderApp(QWidget):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
                     
-            self.signals.finished.emit("Sukses", True)
         except Exception as e:
-            self.signals.finished.emit(f"Error: {str(e)[:100]}", False)
+            print(f"Download task error: {e}")
 
 
 if __name__ == "__main__":
