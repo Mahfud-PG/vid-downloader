@@ -358,7 +358,7 @@ class VidDownloaderApp(QWidget):
             "search_btn": "Cari / Tampilkan",
             "search_searching": "Mencari...",
             "status_found": "Ditemukan {} hasil.",
-            "download_btn": "Download ({} - {})",
+            "download_btn": "Unduh ({} - {})",
             "menu_copy_link": "Salin Link",
             "menu_settings": "Pengaturan",
             "menu_folder": "Ubah Folder Penyimpanan...",
@@ -586,7 +586,6 @@ class VidDownloaderApp(QWidget):
         font.setBold(True)
         self.download_button.setFont(font)
         self.download_button.setMinimumHeight(40)
-        self.download_button.setAccessibleName("Tombol Unduh")
         self.download_button.clicked.connect(self.start_download)
         main_layout.addWidget(self.download_button)
 
