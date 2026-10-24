@@ -18,7 +18,7 @@ from PyQt6.QtMultimediaWidgets import QVideoWidget
 import yt_dlp
 import imageio_ffmpeg
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "Mahfud-PG/vid-downloader"
 
 def get_ffmpeg_path():
@@ -365,6 +365,10 @@ class VidDownloaderApp(QWidget):
             "search_searching": "Mencari...",
             "status_found": "Ditemukan {} hasil.",
             "download_btn": "Unduh ({} - {})",
+            "download_btn_pitch": "Unduh ({} - {} [Nada: {}])",
+            "menu_pitch": "Transpose Nada",
+            "pitch_normal": "0 (Nada Asli)",
+            "pitch_val": "{} (Semitone)",
             "menu_copy_link": "Salin Link",
             "menu_settings": "Pengaturan",
             "menu_folder": "Ubah Folder Penyimpanan...",
@@ -399,6 +403,10 @@ class VidDownloaderApp(QWidget):
             "search_searching": "Searching...",
             "status_found": "Found {} results.",
             "download_btn": "Download ({} - {})",
+            "download_btn_pitch": "Download ({} - {} [Pitch: {}])",
+            "menu_pitch": "Transpose Pitch",
+            "pitch_normal": "0 (Original Pitch)",
+            "pitch_val": "{} (Semitone)",
             "menu_copy_link": "Copy Link",
             "menu_settings": "Settings",
             "menu_folder": "Change Download Folder...",
@@ -436,10 +444,12 @@ class VidDownloaderApp(QWidget):
         self.current_theme = self.settings.value("theme", "Terang")
         self.current_format = self.settings.value("format", "Video (MP4)")
         self.current_quality = self.settings.value("quality", "1080p")
+        self.current_pitch = self.settings.value("pitch", 0, type=int)
         
         self.video_qualities = ["1080p", "720p", "480p", "Terbaik"]
         self.audio_qualities = ["320kbps", "128kbps"]
         self.wav_qualities = ["Lossless 16-bit (CD Quality)", "Studio 24-bit (Hi-Res)"]
+        self.pitch_options = [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6]
         
         # fallback fix if they somehow saved a quality not matching format
         if self.current_format == "Video (MP4)" and self.current_quality not in self.video_qualities:
@@ -861,6 +871,21 @@ class VidDownloaderApp(QWidget):
             action.triggered.connect(lambda checked, name=q_name: self.change_quality(name))
             quality_menu.addAction(action)
 
+        pitch_menu = menu.addMenu(self.tr("menu_pitch"))
+        for p_val in self.pitch_options:
+            if p_val == 0:
+                p_text = self.tr("pitch_normal")
+            elif p_val > 0:
+                p_text = f"+{p_val} (Naik {p_val})" if self.current_lang == "id" else f"+{p_val} (Pitch Up {p_val})"
+            else:
+                p_text = f"{p_val} (Turun {abs(p_val)})" if self.current_lang == "id" else f"{p_val} (Pitch Down {abs(p_val)})"
+            action = QAction(p_text, self)
+            action.setCheckable(True)
+            if self.current_pitch == p_val:
+                action.setChecked(True)
+            action.triggered.connect(lambda checked, v=p_val: self.change_pitch(v))
+            pitch_menu.addAction(action)
+
         menu.addSeparator()
         info_menu_title = "Info & Bantuan" if self.current_lang == "id" else "Info & Help"
         info_menu = menu.addMenu(info_menu_title)
@@ -889,7 +914,7 @@ class VidDownloaderApp(QWidget):
 
     def show_help_dialog(self):
         title = "Bantuan & Pintasan" if self.current_lang == "id" else "Help & Shortcuts"
-        text = "FITUR UTAMA:\n- Mode Pencarian: Tersedia pilihan mode 'Lagu / Video Tunggal' atau 'Album Lengkap' di Menu Konteks (Klik Kanan) atau cukup tekan Ctrl+M untuk berpindah mode tanpa perlu mengetik awalan 'album: '.\n- Pencarian Langsung: Ketik kata kunci biasa (nama lagu atau artis).\n- Tempel Link: Tempel (Paste) link YouTube, Playlist, atau TikTok untuk langsung diproses.\n- Unduh Massal: Tahan tombol Shift atau Ctrl di daftar lagu untuk memilih lebih dari satu.\n\nPINTASAN KEYBOARD (SHORTCUTS):\n- Ctrl+M : Beralih Mode Pencarian (Single <-> Album Lengkap).\n- Panah Bawah (dari kotak teks): Pindah ke daftar hasil.\n- Enter (di daftar hasil): Putar lagu/video untuk percobaan.\n- Spasi: Putar/Jeda (Play/Pause) saat memutar lagu.\n- Panah Atas/Bawah (saat memutar): Naik/turunkan volume.\n- Panah Kanan/Kiri (saat memutar): Maju/mundur 5 detik.\n- Esc (di dalam album): Kembali ke daftar album sebelumnya." if self.current_lang == "id" else "MAIN FEATURES:\n- Search Mode: Choose between 'Single Song / Video' or 'Full Album' via Context Menu or press Ctrl+M to toggle modes without typing 'album: ' prefix.\n- Direct Search: Type regular search keywords.\n- Paste Link: Paste YouTube, Playlist, or TikTok links to process directly.\n- Bulk Download: Hold Shift or Ctrl in the list to select multiple items.\n\nKEYBOARD SHORTCUTS:\n- Ctrl+M : Toggle Search Mode (Single <-> Album).\n- Down Arrow (from text box): Jump to results list.\n- Enter (on results list): Play media for preview.\n- Spacebar: Play/Pause during playback.\n- Up/Down Arrow (during playback): Increase/decrease volume.\n- Right/Left Arrow (during playback): Fast forward/rewind 5 seconds.\n- Esc (inside album): Go back to previous album list."
+        text = "FITUR UTAMA:\n- Transpose Nada: Atur nada naik/turun (-6 s/d +6) di Menu Konteks sebelum unduh agar musik langsung tersimpan sesuai nada vokal Anda tanpa mengubah tempo.\n- Mode Pencarian: Tersedia mode 'Lagu / Video Tunggal' atau 'Album Lengkap' di Menu Konteks atau tekan Ctrl+M.\n- Format & Kualitas: Mendukung Video MP4, Audio MP3 (hingga 320kbps), dan WAV Uncompressed PCM (16-bit CD & 24-bit Hi-Res).\n- Antrean Unduhan: Tombol unduh selalu aktif sehingga Anda dapat terus menambahkan lagu/album baru saat unduhan lain sedang berjalan.\n- Tempel Link: Tempel link YouTube, Playlist, atau TikTok untuk langsung diproses.\n\nPINTASAN KEYBOARD (SHORTCUTS):\n- Ctrl+M : Beralih Mode Pencarian (Single <-> Album Lengkap).\n- Panah Bawah (dari kotak teks): Pindah ke daftar hasil.\n- Enter (di daftar hasil): Putar lagu/video untuk percobaan.\n- Spasi: Putar/Jeda (Play/Pause) saat memutar lagu.\n- Panah Atas/Bawah (saat memutar): Naik/turunkan volume.\n- Panah Kanan/Kiri (saat memutar): Maju/mundur 5 detik.\n- Esc (di dalam album): Kembali ke daftar album sebelumnya." if self.current_lang == "id" else "MAIN FEATURES:\n- Transpose Pitch: Shift pitch up/down (-6 to +6) in Context Menu before download so tracks save in your vocal range without altering tempo.\n- Search Mode: Choose between 'Single' or 'Full Album' via Context Menu or press Ctrl+M.\n- Format & Quality: Supports MP4 Video, MP3 Audio (up to 320kbps), and Lossless PCM WAV (16-bit & 24-bit).\n- Download Queue: Persistent download button allows queueing tracks while other downloads run.\n- Paste Link: Paste YouTube, Playlist, or TikTok links directly.\n\nKEYBOARD SHORTCUTS:\n- Ctrl+M : Toggle Search Mode (Single <-> Album).\n- Down Arrow (from text box): Jump to results list.\n- Enter (on results list): Play media for preview.\n- Spacebar: Play/Pause during playback.\n- Up/Down Arrow (during playback): Increase/decrease volume.\n- Right/Left Arrow (during playback): Fast forward/rewind 5 seconds.\n- Esc (inside album): Go back to previous album list."
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, title, text)
 
@@ -913,6 +938,17 @@ class VidDownloaderApp(QWidget):
         mode_name = self.tr("mode_album") if mode == "album" else self.tr("mode_single")
         self.status_label.setText(self.tr("mode_switched", mode_name))
 
+    def update_download_button_text(self):
+        if not hasattr(self, 'download_button'):
+            return
+        if self.current_pitch != 0:
+            sign = "+" if self.current_pitch > 0 else ""
+            pitch_str = f"{sign}{self.current_pitch}"
+            btn_text = self.tr("download_btn_pitch", self.current_format, self.current_quality, pitch_str)
+        else:
+            btn_text = self.tr("download_btn", self.current_format, self.current_quality)
+        self.download_button.setText(btn_text)
+
     def change_lang(self, code):
         self.current_lang = code
         self.settings.setValue("lang", code)
@@ -920,7 +956,7 @@ class VidDownloaderApp(QWidget):
         hint_key = "search_hint_album" if self.search_mode == "album" else "search_hint_single"
         self.url_label.setText(self.tr(hint_key))
         self.search_button.setText(self.tr("search_btn"))
-        self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
+        self.update_download_button_text()
         if self.status_label.text() == "Mencari..." or self.status_label.text() == "Searching...":
             self.status_label.setText(self.tr("search_searching"))
 
@@ -937,12 +973,20 @@ class VidDownloaderApp(QWidget):
             if self.current_quality not in self.audio_qualities:
                 self.current_quality = "320kbps"
         self.settings.setValue("quality", self.current_quality)
-        self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
+        self.update_download_button_text()
         
     def change_quality(self, qlt):
         self.current_quality = qlt
         self.settings.setValue("quality", qlt)
-        self.download_button.setText(self.tr("download_btn", self.current_format, self.current_quality))
+        self.update_download_button_text()
+
+    def change_pitch(self, pitch_val):
+        self.current_pitch = int(pitch_val)
+        self.settings.setValue("pitch", self.current_pitch)
+        self.update_download_button_text()
+        sign = "+" if self.current_pitch > 0 else ""
+        msg = f"Transpose Nada: {sign}{self.current_pitch}" if self.current_pitch != 0 else "Transpose Nada: Normal (0)"
+        self.status_label.setText(msg)
 
     def check_for_updates(self, silent=True):
         if hasattr(self, 'update_checker') and self.update_checker.isRunning():
@@ -1167,11 +1211,13 @@ del "%~f0"
 
         format_choice = self.current_format
         quality_choice = self.current_quality
+        pitch_choice = self.current_pitch
 
         task = {
             'items': items_data,
             'format': format_choice,
-            'quality': quality_choice
+            'quality': quality_choice,
+            'pitch': pitch_choice
         }
 
         self.download_queue.put(task)
@@ -1199,13 +1245,14 @@ del "%~f0"
             items_data = task['items']
             format_choice = task['format']
             quality_choice = task['quality']
+            pitch_choice = task.get('pitch', 0)
 
-            self.download_process_task(items_data, format_choice, quality_choice)
+            self.download_process_task(items_data, format_choice, quality_choice, pitch_choice)
 
         self.is_downloading = False
         self.signals.all_finished.emit(self.tr("all_done"), True)
 
-    def download_process_task(self, items_data, format_choice, quality_choice):
+    def download_process_task(self, items_data, format_choice, quality_choice, pitch_choice=0):
         ffmpeg_loc = get_ffmpeg_path()
         base_ydl_opts = {
             'progress_hooks': [self.progress_hook],
@@ -1215,10 +1262,17 @@ del "%~f0"
             'extractor_args': {'youtube': ['player_client=android,web']},
         }
 
+        # Hitung faktor pitch scale untuk rubberband jika ada transpose
+        rubberband_filter = []
+        if pitch_choice != 0:
+            pitch_scale = 2.0 ** (float(pitch_choice) / 12.0)
+            rubberband_filter = ['-af', f'rubberband=pitch={pitch_scale:.6f}']
+
         if format_choice == "Audio (WAV)":
             is_24bit = "24-bit" in quality_choice
             pcm_codec = "pcm_s24le" if is_24bit else "pcm_s16le"
             sample_rate = "48000" if is_24bit else "44100"
+            ffmpeg_args = rubberband_filter + ['-acodec', pcm_codec, '-ar', sample_rate]
             base_ydl_opts.update({
                 'format': 'bestaudio/best',
                 'postprocessors': [
@@ -1228,12 +1282,12 @@ del "%~f0"
                     }
                 ],
                 'postprocessor_args': {
-                    'ffmpeg': ['-acodec', pcm_codec, '-ar', sample_rate]
+                    'ffmpeg': ffmpeg_args
                 }
             })
         elif format_choice == "Audio (MP3)":
             bitrate = "320" if "320" in quality_choice else "128"
-            base_ydl_opts.update({
+            postprocessor_dict = {
                 'format': 'bestaudio/best',
                 'writethumbnail': True,
                 'postprocessors': [
@@ -1247,7 +1301,12 @@ del "%~f0"
                         'already_have_thumbnail': False
                     }
                 ],
-            })
+            }
+            if rubberband_filter:
+                postprocessor_dict['postprocessor_args'] = {
+                    'ffmpeg': rubberband_filter
+                }
+            base_ydl_opts.update(postprocessor_dict)
         else: # Video (MP4)
             if "1080p" in quality_choice:
                 base_ydl_opts['format'] = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best'
@@ -1258,6 +1317,10 @@ del "%~f0"
             else:
                 base_ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
             
+            if rubberband_filter:
+                base_ydl_opts['postprocessor_args'] = {
+                    'ffmpeg': rubberband_filter
+                }
             base_ydl_opts['merge_output_format'] = 'mp4'
 
         total_items = len(items_data)

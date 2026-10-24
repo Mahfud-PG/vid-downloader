@@ -7,10 +7,12 @@ Vid Downloader adalah aplikasi desktop untuk Windows yang dirancang khusus untuk
 
 2. FITUR UTAMA
 - Pencarian Langsung: Cari video hanya dengan mengetikkan judul atau cukup paste link video.
-- Format & Kualitas Fleksibel: Unduh dalam bentuk Video (MP4) atau Audio (MP3). Terdapat pilihan kualitas hingga resolusi 1080p untuk video, dan 320kbps untuk audio.
+- Mode Pencarian Fleksibel: Beralih antara pencarian Lagu Tunggal (Single) dan Album Lengkap (Full Album) via shortcut Ctrl+M.
+- Format & Kualitas: Unduh dalam bentuk Video (MP4), Audio (MP3 hingga 320kbps), serta format WAV Lossless PCM murni (16-bit standar CD dan 24-bit Hi-Res).
+- Transpose Nada Hasil Unduhan: Atur pergeseran nada (-6 s/d +6 semitone) di Menu Konteks sebelum unduh agar audio otomatis tersimpan sesuai jangkauan vokal Anda tanpa mengubah tempo/kecepatan musik.
+- Antrean Unduhan Multi-Tugas: Tombol unduh selalu aktif permanen, memungkinkan Anda memasukkan lagu atau album baru ke antrean saat proses unduh lain sedang berjalan.
 - Pemutar Bawaan: Dilengkapi pemutar video/audio yang ringan dengan kontrol menggunakan keyboard.
-- Memori Folder: Aplikasi akan secara otomatis menyimpan dan mengingat folder unduhan terakhir yang Anda pilih.
-- Aksesibilitas: Ramah bagi pengguna tunanetra dengan nama label dan deksripsi elemen yang jelas untuk pembaca layar.
+- Sistem Pembaruan Otomatis: Aplikasi memeriksa ketersediaan versi baru secara otomatis dari GitHub Releases.
 
 3. CARA MENGGUNAKAN APLIKASI
    A. Melakukan Pencarian
