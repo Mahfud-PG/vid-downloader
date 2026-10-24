@@ -444,7 +444,7 @@ class VidDownloaderApp(QWidget):
         self.current_theme = self.settings.value("theme", "Terang")
         self.current_format = self.settings.value("format", "Video (MP4)")
         self.current_quality = self.settings.value("quality", "1080p")
-        self.current_pitch = self.settings.value("pitch", 0, type=int)
+        self.current_pitch = 0 # Selalu mulai dari nada normal (0) setiap kali aplikasi dibuka agar pengguna tidak lupa
         
         self.video_qualities = ["1080p", "720p", "480p", "Terbaik"]
         self.audio_qualities = ["320kbps", "128kbps"]
@@ -982,7 +982,6 @@ class VidDownloaderApp(QWidget):
 
     def change_pitch(self, pitch_val):
         self.current_pitch = int(pitch_val)
-        self.settings.setValue("pitch", self.current_pitch)
         self.update_download_button_text()
         sign = "+" if self.current_pitch > 0 else ""
         msg = f"Transpose Nada: {sign}{self.current_pitch}" if self.current_pitch != 0 else "Transpose Nada: Normal (0)"
