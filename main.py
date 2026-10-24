@@ -1046,7 +1046,7 @@ class VidDownloaderApp(QWidget):
             bat_content = f'''@echo off
 timeout /t 2 /nobreak >nul
 copy /y "{new_exe_path}" "{current_exe}" >nul
-start "" "{current_exe}"
+explorer.exe "{current_exe}"
 del "%~f0"
 '''
             try:
